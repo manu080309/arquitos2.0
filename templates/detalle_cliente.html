@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block title %}👤 Detalle de {{ cliente.nombre }}{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+  <!-- 🧭 Encabezado -->
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+    <h2 class="m-0">👤 {{ cliente.nombre }}</h2>
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('app_rutas.index') }}" class="btn btn-outline-secondary btn-sm">⬅️ Volver</a>
+      <!-- 🔴 Botón eliminar cliente -->
+      <form action="{{ url_for('app_rutas.eliminar_cliente', cliente_id=cliente.id) }}" method="POST" onsubmit="return confirmarEliminacion();" style="display:inline;">
+        <button type="submit" class="btn btn-danger btn-sm">🗑️ Eliminar</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- 🪪 Información del cliente -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="row">
+        <div class="col-md-6">
+          <p><strong>📄 Código:</strong> {{ cliente.codigo }}</p>
+          <p><strong>🏠 Dirección:</strong> {{ cliente.direccion or "No registrada" }}</p>
+          <p><strong>📞 Teléfono:</strong> {{ cliente.telefono or "No registrado" }}</p>
+        </div>
+        <div class="col-md-6">
+          <p><strong>📅 Fecha de creación:</strong> {{ cliente.fecha_creacion.strftime("%d/%m/%Y") }}</p>
+          <p><strong>💰 Saldo total:</strong> 
+            {% if cliente.saldo_total() > 0 %}
+              <span class="fw-bold text-success">${{ "%.2f"|format(cliente.saldo_total()) }}</span>
+            {% else %}
+              <span class="text-muted">Cancelado</span>
+            {% endif %}
+          </p>
+          <p><strong>Estado:</strong>
+            {% if cliente.cancelado %}
+              <span class="badge bg-danger">Cancelado</span>
+            {% else %}
+              <span class="badge bg-success">Activo</span>
+            {% endif %}
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 💸 Nuevo préstamo -->
+  {% if not cliente.cancelado %}
+  <div class="card mb-4 shadow-sm border-0">
+    <div class="card-body">
+      <h5 class="card-title mb-3">➕ Otorgar nuevo préstamo</h5>
+      <form action="{{ url_for('app_rutas.otorgar_prestamo', cliente_id=cliente.id) }}" method="POST" class="row g-2 align-items-center">
+        <div class="col-md-3">
+          <input type="number" name="monto" step="0.01" class="form-control" placeholder="Monto" required>
+        </div>
+        <div class="col-md-2">
+          <input type="number" name="interes" step="0.01" class="form-control" placeholder="% Interés">
+        </div>
+        <div class="col-md-2">
+          <input type="number" name="plazo" class="form-control" placeholder="Plazo (días)">
+        </div>
+        <div class="col-md-3">
+          <button type="submit" class="btn btn-primary w-100">💸 Otorgar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 🧾 Lista de préstamos -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title">💰 Préstamos del cliente</h5>
+      {% if prestamos %}
+      <table class="table table-bordered table-hover align-middle text-center mt-3">
+        <thead class="table-dark">
+          <tr>
+            <th>📅 Fecha</th>
+            <th>💵 Monto</th>
+            <th>📈 Interés</th>
+            <th>⏳ Plazo</th>
+            <th>💰 Saldo</th>
+            <th>📜 Abonos</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for p in prestamos %}
+          <tr>
+            <td>{{ p.fecha.strftime("%d/%m/%Y") }}</td>
+            <td>${{ "%.2f"|format(p.monto) }}</td>
+            <td>{{ "%.2f"|format(p.interes or 0) }}%</td>
+            <td>{{ p.plazo or "-" }}</td>
+            <td>
+              {% if p.saldo <= 0 %}
+                <span class="text-muted">Cancelado</span>
+              {% else %}
+                <span class="fw-bold text-success">${{ "%.2f"|format(p.saldo) }}</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if p.saldo > 0 %}
+              <button class="btn btn-sm btn-outline-success ver-abonos" data-prestamo-id="{{ p.id }}">
+                📜 Ver Abonos
+              </button>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="alert alert-info mt-3 text-center">
+        ℹ️ No hay préstamos registrados para este cliente.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- 🕒 Hora actual -->
+  <div class="text-end mt-4 text-muted">
+    🕒 Hora actual: {{ hora_actual() }}
+  </div>
+</div>
+
+<!-- 📦 Modal de abonos -->
+<div class="modal fade" id="modalAbonos" tabindex="-1" aria-labelledby="modalAbonosLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark text-white">
+        <h5 class="modal-title" id="modalAbonosLabel">📜 Historial de Abonos</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm table-bordered text-center align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>📅 Fecha</th>
+              <th>🕒 Hora</th>
+              <th>💰 Monto</th>
+            </tr>
+          </thead>
+          <tbody id="tablaAbonosBody">
+            <tr><td colspan="3"><em>Cargando...</em></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ⚙️ Script -->
+<script>
+function confirmarEliminacion() {
+  return confirm("¿Seguro que deseas eliminar este cliente? Esta acción no se puede deshacer.");
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  document.querySelectorAll(".ver-abonos").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const prestamoId = btn.dataset.prestamoId;
+      const modal = new bootstrap.Modal(document.getElementById("modalAbonos"));
+      const tbody = document.getElementById("tablaAbonosBody");
+      tbody.innerHTML = "<tr><td colspan='3'><em>Cargando...</em></td></tr>";
+
+      try {
+        const response = await fetch(`/historial_abonos/${prestamoId}`);
+        const data = await response.json();
+
+        if (data.abonos.length > 0) {
+          tbody.innerHTML = data.abonos.map(a => `
+            <tr>
+              <td>${a.fecha}</td>
+              <td>${a.hora}</td>
+              <td>$${a.monto.toFixed(2)}</td>
+            </tr>
+          `).join("");
+        } else {
+          tbody.innerHTML = `<tr><td colspan="3"><em>Sin abonos registrados</em></td></tr>`;
+        }
+
+        modal.show();
+      } catch (err) {
+        console.error(err);
+        tbody.innerHTML = `<tr><td colspan="3" class="text-danger">Error al cargar abonos.</td></tr>`;
+      }
+    });
+  });
+});
+</script>
+{% endblock %}
